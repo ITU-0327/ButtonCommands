@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Command Buttons", "ITU", "1.0.0")]
+    [Info("Command Buttons", "ITU", "1.1.0")]
     [Description("Create your own GUI buttons for commands.")]
     class CommandButtons : RustPlugin
     {
@@ -62,6 +62,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Text size")]
             public short TextSize = 12;
 
+            [JsonProperty(PropertyName = "Menu permission")]
+            public string Permission = "commandbuttons.tp";
+
             [JsonProperty(PropertyName = "Button text")]
             public string Text = "Accept TP";
 
@@ -75,13 +78,11 @@ namespace Oxide.Plugins
         protected override void LoadConfig()
         {
             base.LoadConfig();
-            try
-            {
+            try {
                 _config = Config.ReadObject<Configuration>();
                 if (_config == null) throw new Exception();
             }
-            catch
-            {
+            catch {
                 PrintError("Your configuration file contains an error. Using default configuration values.");
                 LoadDefaultConfig();
             }
@@ -94,105 +95,49 @@ namespace Oxide.Plugins
         #endregion
 
 
-
-
         // HOOKS
         #region Hooks
+
+        private int calcButtons(BasePlayer player)
+        {
+            int counter = 0;
+            foreach(ConfigButton btn in _config.Buttons) {
+                if (CanUse(player, btn.Permission))
+                    counter++;
+            }
+            return counter;
+        }
 
         private void Init()
         {
             LoadConfig();
+
+            // Registering permissions
+            foreach(ConfigButton btn in _config.Buttons)
+            {
+                var perm = btn.Permission;
+                if (!string.IsNullOrEmpty(perm) && !permission.PermissionExists(perm, this))
+                    permission.RegisterPermission(perm, this);
+            }
             
             cmd.AddConsoleCommand("commandbuttons.exec", this, arg =>
             {
-                if (!arg.HasArgs(2))
-                    return false;
-
+                if (!arg.HasArgs(2)) return false;
+                
                 var isChat = arg.Args[0] == "chat";
                 SendCommand(arg.Connection, arg.Args.Skip(1).ToArray(), isChat);
                 
                 return false;
             });
             
-            // Loading CUIs
-            var buttonsCount = _config.Buttons.Count;            
-
-            var minGuiMarginHorizontal = _config.HorizontalBetweenButtons;
-            var minGuiMarginVertical = _config.VerticalBetweenButtons;
-            var minGuiWidth = _config.ButtonWidth;
-            var minGuiHeight = _config.ButtonHeight;
-
-            var backgroundWidth = 2 * minGuiMarginHorizontal + minGuiWidth;
-            var backgroundHeight = minGuiMarginVertical + buttonsCount * (minGuiHeight + minGuiMarginVertical);
-            var relativeButtonWidth = minGuiWidth / backgroundWidth;
-            var relativeButtonHeight = minGuiHeight / backgroundHeight;
-            var relativeMarginHorizontal = minGuiMarginHorizontal / backgroundWidth;
-            var relativeMarginVertical = minGuiMarginVertical / backgroundHeight;
-            
-            // Loading menu
-            string[] LeftTopCorner = _config.LeftTopPosition.Split(' ');
-            var mleft = double.Parse(LeftTopCorner[0]);
-            var mtop = double.Parse(LeftTopCorner[1]);
-            var mright = mleft + backgroundWidth;
-            var mbutton = mtop - backgroundHeight;
-            
-            Menu = new CuiPanel
-            {
-                Image =
-                {
-                    Color = _config.backgroundColor
-                },
-                CursorEnabled = false,
-                RectTransform =
-                {
-                    AnchorMin = $"{mleft} {mbottom}",
-                    AnchorMax = $"{mright} {mtop}"
-                }
-            };
-
-
-            // Loading buttons
-            for (var i = 0; i < buttonsCount; i++)
-            {
-                var button = _config.Buttons[i];
-
-                var left =  relativeMarginHorizontal;
-                var top = 1 - relativeMarginVertical - i * (relativeButtonHeight + relativeMarginVertical);
-                var bottom = top - relativeButtonHeight;
-                var right = left + relativeButtonWidth;
-                
-                var type = button.IsChatCommand ? "chat" : "console";
-
-                button.Button = new CuiButton
-                {
-                    Text =
-                    {
-                        Text = $"<color={button.TextColor}>{button.Text}</color>",
-                        FontSize = button.TextSize,
-                        Align = TextAnchor.MiddleCenter,
-                    },
-                    Button =
-                    {
-                        Color = button.ButtonColor,
-                        Command = $"commandbuttons.exec {type} {button.Command}",
-                    },
-                    RectTransform =
-                    {
-                        AnchorMin = $"{left} {bottom}",
-                        AnchorMax = $"{right} {top}"
-                    }
-                };
+            foreach (var player in BasePlayer.activePlayerList) {
+                ShowUI(player, _config);
             }
-
-            var playersCount = BasePlayer.activePlayerList.Count;
-            for (var i = 0; i < playersCount; i++)
-                ShowUI(BasePlayer.activePlayerList[i], _config);
         }
 
         private void Unload()
         {
-            foreach (var player in BasePlayer.activePlayerList)
-            {
+            foreach (var player in BasePlayer.activePlayerList) {
                 DestroyUI(player);
             }
         }
@@ -230,26 +175,93 @@ namespace Oxide.Plugins
 
         private void ShowUI(BasePlayer player, Configuration config)
         {
-            var GUIElement = new CuiElementContainer();
-            GUIElement.Add(Menu, "Hud", "GameMenuCUI");
-
-            var buttonsCount = config.Buttons.Count;
-            for (var i = 0; i < buttonsCount; i++)
-                GUIElement.Add(config.Buttons[i].Button, "GameMenuCUI", "GameMenuCUIButton");
-
+            // Destroy existing UI
             DestroyUI(player);
+
+            int buttonsCount = calcButtons(player);
+            var GUIElement = new CuiElementContainer();   
+
+            // Loading CUIs
+            var minGuiMarginHorizontal = _config.HorizontalBetweenButtons;
+            var minGuiMarginVertical = _config.VerticalBetweenButtons;
+            var minGuiWidth = _config.ButtonWidth;
+            var minGuiHeight = _config.ButtonHeight;
+
+            var backgroundWidth = 2 * minGuiMarginHorizontal + minGuiWidth;
+            var backgroundHeight = minGuiMarginVertical + buttonsCount * (minGuiHeight + minGuiMarginVertical);
+
+            string[] LeftTopCorner = _config.LeftTopPosition.Split(' ');
+            var mleft = double.Parse(LeftTopCorner[0]);
+            var mtop = double.Parse(LeftTopCorner[1]);
+            var mright = mleft + backgroundWidth;
+            var mbottom = mtop - backgroundHeight;
+
+            var relativeButtonWidth = minGuiWidth / backgroundWidth;
+            var relativeButtonHeight = minGuiHeight / backgroundHeight;
+            var relativeMarginHorizontal = minGuiMarginHorizontal / backgroundWidth;
+            var relativeMarginVertical = minGuiMarginVertical / backgroundHeight;
+            
+            // Loading menu
+            Menu = new CuiPanel
+            {
+                Image =
+                {
+                    Color = _config.backgroundColor
+                },
+                CursorEnabled = false,
+                RectTransform =
+                {
+                    AnchorMin = $"{mleft} {mbottom}",
+                    AnchorMax = $"{mright} {mtop}"
+                }
+            };
+            GUIElement.Add(Menu, "Hud", Name);
+
+
+            // Loading buttons
+            if (buttonsCount == 0) return;
+            int count = 0;
+            foreach(ConfigButton btn in _config.Buttons) {
+                if (CanUse(player, btn.Permission)) {
+                    var left =  relativeMarginHorizontal;
+                    var top = 1 - relativeMarginVertical - count++ * (relativeButtonHeight + relativeMarginVertical);
+                    var bottom = top - relativeButtonHeight;
+                    var right = left + relativeButtonWidth;
+
+                    var type = btn.IsChatCommand ? "chat" : "console";
+                    btn.Button = new CuiButton
+                    {
+                        Text =
+                        {
+                            Text = $"<color={btn.TextColor}>{btn.Text}</color>",
+                            FontSize = btn.TextSize,
+                            Align = TextAnchor.MiddleCenter,
+                        },
+                        Button =
+                        {
+                            Color = btn.ButtonColor,
+                            Command = $"commandbuttons.exec {type} {btn.Command}",
+                        },
+                        RectTransform =
+                        {
+                            AnchorMin = $"{left} {bottom}",
+                            AnchorMax = $"{right} {top}"
+                        }
+                    };
+                    GUIElement.Add(btn.Button, Name, "CommandButtonsCUIButton");
+                }
+            }
             CuiHelper.AddUi(player, GUIElement);
         }
 
         private void DestroyUI(BasePlayer player)
         {
-            CuiHelper.DestroyUi(player, "GameMenuCUI");
+            CuiHelper.DestroyUi(player, Name);
         }
 
         private void SendCommand(Connection conn, string[] args, bool isChat)
         {
-            if (!Net.sv.IsConnected())
-                return;
+            if (!Net.sv.IsConnected()) return;
 
             var command = string.Empty;
             var argsLength = args.Length;
