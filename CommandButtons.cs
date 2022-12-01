@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Command Buttons", "ITU", "1.1.0")]
+    [Info("Command Buttons", "ITU", "1.1.1")]
     [Description("Create your own GUI buttons for commands.")]
     class CommandButtons : RustPlugin
     {
@@ -32,11 +32,8 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "GUI Left Top Position")]
             public string LeftTopPosition = "0.01 0.88";
 
-            [JsonProperty(PropertyName = "Distance between buttons(horizontal)")]
-            public float HorizontalBetweenButtons = 0.002f;
-
-            [JsonProperty(PropertyName = "Distance between buttons(vertical)")]
-            public float VerticalBetweenButtons = 0.004f;
+            [JsonProperty(PropertyName = "Distance between buttons")]
+            public float BetweenButtons = 0.002f;
 
             [JsonProperty(PropertyName = "Button width")]
             public float ButtonWidth = 0.085f;
@@ -46,7 +43,6 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "List of buttons", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<ConfigButton> Buttons = new List<ConfigButton> { new ConfigButton() };
-
         }
 
         private class ConfigButton
@@ -62,7 +58,7 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Text size")]
             public short TextSize = 12;
 
-            [JsonProperty(PropertyName = "Menu permission")]
+            [JsonProperty(PropertyName = "Button permission")]
             public string Permission = "commandbuttons.tp";
 
             [JsonProperty(PropertyName = "Button text")]
@@ -182,8 +178,8 @@ namespace Oxide.Plugins
             var GUIElement = new CuiElementContainer();   
 
             // Loading CUIs
-            var minGuiMarginHorizontal = _config.HorizontalBetweenButtons;
-            var minGuiMarginVertical = _config.VerticalBetweenButtons;
+            var minGuiMarginHorizontal = _config.BetweenButtons;
+            var minGuiMarginVertical = _config.BetweenButtons * 2;
             var minGuiWidth = _config.ButtonWidth;
             var minGuiHeight = _config.ButtonHeight;
 
