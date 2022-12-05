@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Command Buttons", "ITU", "1.1.1")]
+    [Info("Command Buttons", "ITU", "1.1.2")]
     [Description("Create your own GUI buttons for commands.")]
     class CommandButtons : RustPlugin
     {
@@ -59,16 +59,16 @@ namespace Oxide.Plugins
             public short TextSize = 12;
 
             [JsonProperty(PropertyName = "Button permission")]
-            public string Permission = "commandbuttons.tp";
+            public string Permission = "commandbuttons.admin";
 
             [JsonProperty(PropertyName = "Button text")]
-            public string Text = "Accept TP";
+            public string Text = "Vanish";
 
             [JsonProperty(PropertyName = "Execute chat (true) or console (false) command")]
             public bool IsChatCommand = true;
 
             [JsonProperty(PropertyName = "Executing command")]
-            public string Command = "/tpa";
+            public string Command = "/vanish";
         }
 
         protected override void LoadConfig()
@@ -91,7 +91,6 @@ namespace Oxide.Plugins
         #endregion
 
 
-        // HOOKS
         #region Hooks
 
         private int calcButtons(BasePlayer player)
@@ -112,8 +111,9 @@ namespace Oxide.Plugins
             foreach(ConfigButton btn in _config.Buttons)
             {
                 var perm = btn.Permission;
-                if (!string.IsNullOrEmpty(perm) && !permission.PermissionExists(perm, this))
+                if (!string.IsNullOrEmpty(perm) && !permission.PermissionExists(perm, this)){
                     permission.RegisterPermission(perm, this);
+                }
             }
             
             cmd.AddConsoleCommand("commandbuttons.exec", this, arg =>
@@ -137,6 +137,28 @@ namespace Oxide.Plugins
                 DestroyUI(player);
             }
         }
+
+        void OnUserPermissionGranted(string id, string permName) => UpdatePlayerUI(id);
+        void OnUserPermissionRevoked(string id, string permName) => UpdatePlayerUI(id);
+        void OnGroupPermissionGranted(string name, string permName) => UpdatePlayersInGroup(name, permName);
+        void OnGroupPermissionRevoked(string name, string permName) => UpdatePlayersInGroup(name, permName);
+        void OnUserGroupAdded(string id, string groupName) => UpdatePlayerUI(id);
+        void OnUserGroupRemoved(string id, string groupName) => UpdatePlayerUI(id);
+
+        void UpdatePlayersInGroup(string name, string permName)
+        {
+            foreach (var user in permission.GetUsersInGroup(name))
+            {
+                UpdatePlayerUI(user.Split(' ')[0]);
+            }
+        }
+
+        void UpdatePlayerUI(string id)
+        {
+            var player = BasePlayer.activePlayerList.Where(x => x.UserIDString == id).FirstOrDefault();
+            if (player != null) ShowUI(player, _config);
+        }
+        
         
         private void OnPlayerSleepEnded(BasePlayer player)
         {
@@ -211,7 +233,7 @@ namespace Oxide.Plugins
                     AnchorMax = $"{mright} {mtop}"
                 }
             };
-            GUIElement.Add(Menu, "Hud", Name);
+            GUIElement.Add(Menu, "Hud.Menu", Name);
 
 
             // Loading buttons
