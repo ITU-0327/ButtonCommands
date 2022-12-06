@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Command Buttons", "ITU", "1.1.2")]
+    [Info("Command Buttons", "ITU", "1.2.0")]
     [Description("Create your own GUI buttons for commands.")]
     class CommandButtons : RustPlugin
     {
@@ -90,6 +90,56 @@ namespace Oxide.Plugins
 
         #endregion
 
+        #region Data
+
+        private Data _Data;
+
+        private class Data
+        {
+            [JsonProperty(PropertyName = "Players Disabled the Buttons")]
+            public List<ulong> Players = new List<ulong>();
+        }
+
+        private void LoadData()
+        {
+            _Data = Interface.Oxide.DataFileSystem.ReadObject<Data>(Name);
+            if (_Data == null)
+                ClearData();
+        }
+
+        private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _Data);
+
+        private void ClearData()
+        {
+            _Data = new Data();
+            SaveData();
+        }
+
+        #endregion
+
+        #region Commands
+
+        [ChatCommand("cb_gui")]
+        private void ToggleButtonsGUI(BasePlayer player, string cmd, string[] args)
+        {
+            if (calcButtons(player) == 0) {
+                PrintToChat(player, GetMsg("No Permission", player.UserIDString));
+                return;
+            }
+
+            if (IsButtonsEnabled(player)) {
+                AddPlayerToData(player);
+                PrintToChat(player, GetMsg("Hide Button GUI", player.UserIDString));
+                DestroyUI(player);
+            }
+            else {
+                RemovePlayerFromData(player);
+                PrintToChat(player, GetMsg("Show Button GUI", player.UserIDString));
+                ShowUI(player, _config);
+            }
+        }
+
+        #endregion
 
         #region Hooks
 
@@ -103,18 +153,26 @@ namespace Oxide.Plugins
             return counter;
         }
 
+        private bool IsButtonsEnabled(BasePlayer player)
+        {
+            return !_Data.Players.Contains(player.userID);
+        }
+
+        private void AddPlayerToData(BasePlayer player)
+        {
+            _Data.Players.Add(player.userID);
+        }
+
+        private void RemovePlayerFromData(BasePlayer player)
+        {
+            _Data.Players.Remove(player.userID);
+        }
+
         private void Init()
         {
             LoadConfig();
-
-            // Registering permissions
-            foreach(ConfigButton btn in _config.Buttons)
-            {
-                var perm = btn.Permission;
-                if (!string.IsNullOrEmpty(perm) && !permission.PermissionExists(perm, this)){
-                    permission.RegisterPermission(perm, this);
-                }
-            }
+            RegisterPermissions();
+            LoadData();
             
             cmd.AddConsoleCommand("commandbuttons.exec", this, arg =>
             {
@@ -127,25 +185,32 @@ namespace Oxide.Plugins
             });
             
             foreach (var player in BasePlayer.activePlayerList) {
-                ShowUI(player, _config);
+                    ShowUI(player, _config);
             }
         }
 
         private void Unload()
         {
+            SaveData();
             foreach (var player in BasePlayer.activePlayerList) {
                 DestroyUI(player);
             }
         }
 
-        void OnUserPermissionGranted(string id, string permName) => UpdatePlayerUI(id);
-        void OnUserPermissionRevoked(string id, string permName) => UpdatePlayerUI(id);
-        void OnGroupPermissionGranted(string name, string permName) => UpdatePlayersInGroup(name, permName);
-        void OnGroupPermissionRevoked(string name, string permName) => UpdatePlayersInGroup(name, permName);
-        void OnUserGroupAdded(string id, string groupName) => UpdatePlayerUI(id);
-        void OnUserGroupRemoved(string id, string groupName) => UpdatePlayerUI(id);
+        private void OnServerSave()
+        {
+            SaveData();
+        }
 
-        void UpdatePlayersInGroup(string name, string permName)
+        //Update UI when permission change
+        private void OnUserPermissionGranted(string id, string permName) => UpdatePlayerUI(id);
+        private void OnUserPermissionRevoked(string id, string permName) => UpdatePlayerUI(id);
+        private void OnGroupPermissionGranted(string name, string permName) => UpdatePlayersInGroup(name, permName);
+        private void OnGroupPermissionRevoked(string name, string permName) => UpdatePlayersInGroup(name, permName);
+        private void OnUserGroupAdded(string id, string groupName) => UpdatePlayerUI(id);
+        private void OnUserGroupRemoved(string id, string groupName) => UpdatePlayerUI(id);
+
+        private void UpdatePlayersInGroup(string name, string permName)
         {
             foreach (var user in permission.GetUsersInGroup(name))
             {
@@ -153,16 +218,15 @@ namespace Oxide.Plugins
             }
         }
 
-        void UpdatePlayerUI(string id)
+        private void UpdatePlayerUI(string id)
         {
             var player = BasePlayer.activePlayerList.Where(x => x.UserIDString == id).FirstOrDefault();
             if (player != null) ShowUI(player, _config);
         }
-        
-        
+
         private void OnPlayerSleepEnded(BasePlayer player)
         {
-            ShowUI(player, _config);
+                ShowUI(player, _config);
         }
 
         private void OnPlayerDeath(BasePlayer player)
@@ -175,24 +239,40 @@ namespace Oxide.Plugins
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 {"No Permission", "You don't have enough permission to run this command!"},
-                {"Only Player", "This command can be used only by players!"}
+                {"Only Player", "This command can be used only by players!"},
+                {"Show Button GUI", "Showing GUI buttons."},
+                {"Hide Button GUI", "Hideing GUI buttons."}
             }, this);
             
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 {"No Permission", "你没有权限使用这个指令!"},
-                {"Only Player", "这个指令只能由玩家使用!"}
+                {"Only Player", "这个指令只能由玩家使用!"},
+                {"Show Button GUI", "顯示 GUI 按钮"},
+                {"Hide Button GUI", "隱藏 GUI 按钮"}
             }, this, "zh-CN");
         }
 
         #endregion
 
 
-        //Helpers
         #region Helpers
+
+        private void RegisterPermissions()
+        {
+            foreach(ConfigButton btn in _config.Buttons)
+            {
+                var perm = btn.Permission;
+                if (!string.IsNullOrEmpty(perm) && !permission.PermissionExists(perm, this)){
+                    permission.RegisterPermission(perm, this);
+                }
+            }
+        }
 
         private void ShowUI(BasePlayer player, Configuration config)
         {
+            if(!IsButtonsEnabled(player)) return;
+            
             // Destroy existing UI
             DestroyUI(player);
 
